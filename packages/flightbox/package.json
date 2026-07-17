@@ -1,6 +1,6 @@
 {
   "name": "fboxrec",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Flight recorder for Node.js servers. Records the last N seconds of HTTP, pg, console, and vitals activity; keeps it only when something breaks.",
   "license": "MIT",
   "repository": "github:lordisrael1/flightbox",
