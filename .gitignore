@@ -1,0 +1,8 @@
+node_modules/
+dist/
+viewer-dist/
+coverage/
+.flightbox/
+*.fbox
+*.log
+.DS_Store

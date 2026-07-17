@@ -1,0 +1,166 @@
+/* Deliberately dark-only (audit I1): incident forensics is a low-light,
+ * high-contrast task and the canvas palette is tuned for it. */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0b0e14;
+  --panel: #11151d;
+  --line: #232a3a;
+  --text: #d5dbe5;
+  --dim: #8b93a3;
+  --red: #e5484d;
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.dim { color: var(--dim); }
+
+/* Audit A3: keyboard focus must be visible everywhere. */
+:focus-visible { outline: 2px solid #7da2f7; outline-offset: 1px; }
+
+/* Audit A1/A5: visually hidden, still announced by screen readers. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.small { font-size: 11px; }
+.pad { padding: 10px; }
+
+.app { display: flex; flex-direction: column; height: 100%; }
+
+.header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px; border-bottom: 1px solid var(--line);
+  background: var(--panel); flex-wrap: wrap;
+}
+.brand { font-weight: 700; letter-spacing: 0.3px; }
+.chip {
+  padding: 2px 8px; border-radius: 10px; font-size: 11px;
+  background: #1c2230; border: 1px solid var(--line);
+}
+.chip-trigger { border-color: rgba(229, 72, 77, 0.5); color: #ff9599; }
+.ghost {
+  margin-left: auto; background: none; border: 1px solid var(--line);
+  color: var(--dim); border-radius: 6px; padding: 3px 10px; cursor: pointer;
+}
+.ghost:hover { color: var(--text); border-color: var(--dim); }
+
+.trigger-bar {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 6px 12px; border-bottom: 1px solid var(--line);
+}
+.trigger-chip {
+  background: rgba(229, 72, 77, 0.12); color: #ff9599;
+  border: 1px solid rgba(229, 72, 77, 0.45); border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; cursor: pointer;
+  font-family: ui-monospace, monospace;
+}
+.trigger-chip:hover { background: rgba(229, 72, 77, 0.25); }
+
+.timeline-wrap {
+  position: relative; flex: 1 1 auto; min-height: 140px;
+  overflow-y: auto; overflow-x: hidden;
+  border-bottom: 1px solid var(--line);
+}
+.tooltip {
+  position: absolute; z-index: 10; pointer-events: none;
+  background: #1c2230; border: 1px solid var(--line); border-radius: 5px;
+  padding: 3px 8px; font: 11px ui-monospace, monospace; color: var(--text);
+  max-width: 480px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.vitals-wrap { border-bottom: 1px solid var(--line); background: var(--panel); }
+
+.scrubber-row {
+  display: grid; grid-template-columns: 1fr minmax(280px, 400px); gap: 0;
+  border-bottom: 1px solid var(--line);
+}
+.scrubber-wrap { background: var(--panel); }
+.instant-state {
+  border-left: 1px solid var(--line); background: var(--panel);
+  padding: 6px 10px; font-size: 11px; overflow: hidden;
+}
+.instant-state.dim { display: flex; align-items: center; justify-content: center; }
+.is-head { margin-bottom: 3px; color: var(--dim); }
+.is-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.is-grid ul { list-style: none; }
+.is-grid b { color: #f5a524; }
+
+.bottom-row {
+  display: grid; grid-template-columns: 1fr 1fr;
+  height: 220px; flex: 0 0 auto;
+}
+.panel { display: flex; flex-direction: column; min-width: 0; background: var(--panel); }
+.panel + .panel { border-left: 1px solid var(--line); }
+.panel-title {
+  padding: 5px 10px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--dim); border-bottom: 1px solid var(--line);
+}
+.log-scroll, .detail-scroll { overflow-y: auto; flex: 1; }
+
+.log-row {
+  display: grid; grid-template-columns: 92px 44px 1fr; gap: 8px;
+  padding: 1px 10px; font-size: 11px; cursor: pointer;
+  white-space: nowrap; overflow: hidden;
+  /* Audit A2: rows are real <button>s now — neutralize UA button chrome. */
+  width: 100%; text-align: left; background: none; border: 0;
+  color: inherit; font: inherit;
+}
+.log-row:hover { background: #1c2230; }
+.lvl { text-transform: uppercase; font-size: 9px; align-self: center; }
+.lvl-error { color: var(--red); }
+.lvl-warn { color: #f5a524; }
+.lvl-log, .lvl-info, .lvl-debug { color: var(--dim); }
+.log-error { color: #ff9599; }
+.log-warn { color: #ffd28f; }
+
+.detail-head { padding-bottom: 6px; word-break: break-all; }
+.kv { border-collapse: collapse; margin-bottom: 8px; }
+.kv td { padding: 1px 12px 1px 0; vertical-align: top; font-size: 12px; }
+pre {
+  background: #0b0e14; border: 1px solid var(--line); border-radius: 6px;
+  padding: 8px; font-size: 11px; overflow-x: auto; margin-bottom: 8px;
+  white-space: pre-wrap; word-break: break-all;
+}
+
+.dropzone {
+  height: 100%; display: flex; flex-direction: column; gap: 10px;
+  align-items: center; justify-content: center; text-align: center;
+  border: 2px dashed transparent; transition: border-color 0.15s;
+}
+.dropzone.over { border-color: #3e7bfa; }
+.dz-logo { font-size: 22px; font-weight: 700; margin-bottom: 12px; }
+.dz-big { font-size: 28px; font-weight: 600; }
+.dz-pick {
+  color: #7da2f7; cursor: pointer; text-decoration: underline;
+  background: none; border: 0; font: inherit; padding: 0;
+}
+.dz-status { color: #f5a524; min-height: 1.45em; }
+.dz-actions { display: flex; gap: 10px; }
+.primary {
+  background: #3e7bfa; color: #fff; border: 0; border-radius: 6px;
+  padding: 6px 14px; cursor: pointer; font: inherit;
+}
+.primary:hover { background: #5a90fb; }
+.dz-error {
+  color: #ff9599; background: rgba(229, 72, 77, 0.1);
+  border: 1px solid rgba(229, 72, 77, 0.4); border-radius: 6px;
+  padding: 6px 12px; max-width: 560px; font-size: 12px;
+}
+.dz-privacy { margin-top: 24px; font-size: 12px; color: var(--dim); }
+
+/* Audit M9: narrow screens / 200% zoom — stack instead of clipping.
+ * body stays unscrollable; each panel scrolls itself. */
+@media (max-width: 760px) {
+  .scrubber-row { grid-template-columns: 1fr; }
+  .instant-state { border-left: 0; border-top: 1px solid var(--line); }
+  .is-grid { grid-template-columns: 1fr; }
+  .bottom-row { grid-template-columns: 1fr; height: 300px; }
+  .panel + .panel { border-left: 0; border-top: 1px solid var(--line); }
+}

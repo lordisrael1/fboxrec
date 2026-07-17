@@ -1,0 +1,27 @@
+name: deploy-viewer
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/viewer/**'
+      - 'packages/format/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @flightbox/viewer build
+      # Static site: no server, no env vars, no cost (§8).
+      - name: deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy packages/viewer/dist --project-name=flightbox-viewer

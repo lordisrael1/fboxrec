@@ -1,0 +1,19 @@
+# Normalize line endings so the repo is LF everywhere. The source files are
+# already UTF-8 (verified at the byte level); any "mojibake" a viewer shows
+# is that tool guessing Latin-1 — not a property of these files.
+* text=auto eol=lf
+*.md text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.css text eol=lf
+
+# Binary / generated — never diff or normalize.
+*.fbox binary
+*.png binary
+*.ico binary
+pnpm-lock.yaml -diff linguist-generated

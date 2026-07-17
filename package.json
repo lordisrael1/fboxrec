@@ -1,0 +1,20 @@
+{
+  "name": "flightbox-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.15.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "msgpackr-extract"
+    ]
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "version": "changeset version && node scripts/sync-version.mjs"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.1"
+  }
+}

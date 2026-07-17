@@ -1,0 +1,58 @@
+{
+  "name": "fboxrec",
+  "version": "0.0.0",
+  "description": "Flight recorder for Node.js servers. Records the last N seconds of HTTP, pg, console, and vitals activity; keeps it only when something breaks.",
+  "license": "MIT",
+  "repository": "github:lordisrael1/flightbox",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./register": {
+      "import": "./dist/register.mjs",
+      "require": "./dist/register.cjs"
+    }
+  },
+  "bin": {
+    "flightbox": "./dist/cli/main.cjs",
+    "fboxrec": "./dist/cli/main.cjs"
+  },
+  "files": [
+    "dist",
+    "viewer-dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup && node scripts/copy-viewer.js",
+    "test": "vitest run",
+    "bench": "node bench/overhead.bench.mjs",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build && pnpm test"
+  },
+  "dependencies": {
+    "msgpackr": "^1.11.0"
+  },
+  "devDependencies": {
+    "@flightbox/format": "workspace:*",
+    "@flightbox/viewer": "workspace:*",
+    "@types/node": "^22.0.0",
+    "autocannon": "^8.0.0",
+    "fast-check": "^3.23.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  }
+}
