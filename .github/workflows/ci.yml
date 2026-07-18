@@ -8,6 +8,8 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      # See every leg's real result — one failure must not cancel the others.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         node: [18, 20, 22]
@@ -26,6 +28,11 @@ jobs:
 
   benchmark-gate:
     runs-on: ubuntu-latest
+    # Informational, NOT a release blocker: micro-benchmarking on a shared CI
+    # runner is too noisy to gate a merge (the bench itself now ignores
+    # sub-floor deltas, but a co-tenant spike can still trip it). Runs on
+    # every push so a real regression is visible; never fails the check.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -37,7 +44,7 @@ jobs:
       # NOTE: the npm package name is fboxrec (audit M1 — a stale
       # "--filter flightbox" silently matches nothing and exits 0).
       - run: pnpm --filter fboxrec build
-      - name: overhead benchmark (p99 gate)
+      - name: overhead benchmark (p99, informational)
         run: pnpm --filter fboxrec bench
         env:
           FLIGHTBOX_BENCH_GATE_PCT: '10'

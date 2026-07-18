@@ -9,6 +9,11 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Surface the secret as env so a step-level `if` can see it (the secrets
+    # context isn't available in `if`). No token configured yet → the deploy
+    # step is skipped and the job stays green instead of failing red.
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -20,8 +25,12 @@ jobs:
       - run: pnpm --filter @flightbox/viewer build
       # Static site: no server, no env vars, no cost (§8).
       - name: deploy to Cloudflare Pages
+        if: env.CF_TOKEN != ''
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy packages/viewer/dist --project-name=flightbox-viewer
+      - name: (skipped — no Cloudflare token)
+        if: env.CF_TOKEN == ''
+        run: echo "CLOUDFLARE_API_TOKEN not set — skipping viewer deploy."

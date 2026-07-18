@@ -16,6 +16,11 @@ const DURATION = Number(process.env.BENCH_DURATION || 10);
 const CONNECTIONS = Number(process.env.BENCH_CONNECTIONS || 50);
 const GATE_PCT = Number(process.env.FLIGHTBOX_BENCH_GATE_PCT || 10);
 const ROUNDS = Number(process.env.BENCH_ROUNDS || 5);
+// Below this absolute p99 delta the percentage is integer-millisecond noise,
+// not signal: autocannon reports p99 in whole ms, so a 1ms→2ms wobble on a
+// shared runner reads as "100%". Only gate when the overhead is both
+// relatively AND absolutely meaningful.
+const GATE_ABS_FLOOR_MS = Number(process.env.FLIGHTBOX_BENCH_ABS_FLOOR_MS || 3);
 
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
@@ -82,6 +87,7 @@ if (process.env.BENCH_CHILD) {
   const mOffP99 = median(p99.off);
   const mOnP99 = median(p99.on);
   const p99Delta = pct(mOnP99, mOffP99);
+  const p99AbsDelta = mOnP99 - mOffP99;
   const p50Delta = pct(median(p50.on), median(p50.off));
   const rpsDelta = pct(median(rps.on), median(rps.off));
 
@@ -91,10 +97,23 @@ if (process.env.BENCH_CHILD) {
   console.log(`p99 ms   ${mOffP99.toFixed(1).padStart(10)} ${mOnP99.toFixed(1).padStart(10)} ${p99Delta.toFixed(1).padStart(8)}%`);
   console.log(`req/s    ${median(rps.off).toFixed(0).padStart(10)} ${median(rps.on).toFixed(0).padStart(10)} ${rpsDelta.toFixed(1).padStart(8)}%`);
 
-  if (p99Delta > GATE_PCT) {
-    console.error(`\nGATE FAILED: median p99 overhead ${p99Delta.toFixed(1)}% > ${GATE_PCT}%`);
+  // Gate only when the overhead is BOTH relatively (>GATE_PCT) and absolutely
+  // (>floor) meaningful — otherwise integer-ms noise (1ms→2ms = "100%") would
+  // fail the build on a healthy runner.
+  if (p99Delta > GATE_PCT && p99AbsDelta > GATE_ABS_FLOOR_MS) {
+    console.error(
+      `\nGATE FAILED: median p99 overhead ${p99Delta.toFixed(1)}% ` +
+        `(+${p99AbsDelta.toFixed(1)}ms) > ${GATE_PCT}% and > ${GATE_ABS_FLOOR_MS}ms floor`
+    );
     process.exit(1);
   }
-  console.log(`\ngate passed: median p99 overhead ${p99Delta.toFixed(1)}% <= ${GATE_PCT}%`);
+  if (p99Delta > GATE_PCT) {
+    console.log(
+      `\ngate passed (within noise): p99 ${p99Delta.toFixed(1)}% but only ` +
+        `+${p99AbsDelta.toFixed(1)}ms absolute (< ${GATE_ABS_FLOOR_MS}ms floor)`
+    );
+  } else {
+    console.log(`\ngate passed: median p99 overhead ${p99Delta.toFixed(1)}% <= ${GATE_PCT}%`);
+  }
   process.exit(0);
 }

@@ -74,7 +74,11 @@ describe.skipIf(!hasBuild)('flightbox open (CLI smoke)', () => {
       });
 
       const parsed = new URL(url);
-      const origin = parsed.origin;
+      // The server binds IPv4 127.0.0.1 (the M5 security fix). Hit that
+      // address directly — on Node 18 `fetch('http://localhost')` resolves
+      // ::1 (IPv6) first and gets ECONNREFUSED. The Host header stays a
+      // localhost form, so the DNS-rebind guard still allows it.
+      const origin = `http://127.0.0.1:${parsed.port}`;
       const incidentPath = parsed.searchParams.get('src')!;
       expect(incidentPath).toMatch(/^\/__incident-[0-9a-f]{32}$/);
 
