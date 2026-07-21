@@ -9,7 +9,7 @@ import {
 } from '@flightbox/format';
 
 /** Kept in sync with package.json by scripts/sync-version.mjs (runs inside `pnpm run version`). */
-export const FLIGHTBOX_VERSION = '0.2.0';
+export const FLIGHTBOX_VERSION = '0.3.0';
 
 /** ADR 016: dumps are emergency artifacts — fastest gzip level, not smallest. */
 export const DUMP_GZIP_LEVEL = 1;
