@@ -16,7 +16,7 @@ jobs:
     # No npm token configured yet → skip the publish step and stay green
     # instead of failing every push. Add NPM_TOKEN to activate releases.
     env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
