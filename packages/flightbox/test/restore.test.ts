@@ -111,7 +111,11 @@ describe('stop() restores module patches', () => {
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
-  });
+    // Whichever parse-backed test runs first pays parseIncident's cold-start
+    // (msgpackr/zlib/JIT warmup, ~3s on CI) on top of a real network round
+    // trip — well over vitest's 5s default. See crash-recovery.test.ts for the
+    // same 20s convention on slow operations.
+  }, 20_000);
 
   it('conditionally: pg prototypes restored when pg is present', () => {
     let pg: any = null;
@@ -166,5 +170,5 @@ describe('stop() restores module patches', () => {
     start();
     flightbox.stop();
     expect(console.log).toBe(trueOriginal);
-  });
+  }, 20_000); // parseIncident cold-start can exceed the 5s default on CI
 });
