@@ -14,8 +14,15 @@ import { capScrub } from '../redaction';
  * core modules; pure-ESM client libs get loader hooks later.
  */
 
-let patched = false;
 let agentRef: AgentApi;
+/** false after stop(): wrappers still in a chain pass straight through. */
+let active = false;
+/**
+ * Target key ('http' | 'https' | 'fetch') → undo. An entry means our wrapper
+ * is (still) in that target's chain; undo returns true once every slot it
+ * owns is back to the original.
+ */
+const liveWraps = new Map<string, () => boolean>();
 
 function extractTarget(args: unknown[]): { method: string; host: string; path: string } {
   let method = 'GET';
@@ -56,11 +63,13 @@ function extractTarget(args: unknown[]): { method: string; host: string; path: s
  */
 const nodeRequire = createRequire(process.cwd() + '/noop.js');
 
-function wrapModule(mod: { request: any; get: any }): void {
-  const origRequest = mod.request.bind(mod);
+function wrapModule(key: string, mod: { request: any; get: any }): void {
+  const rawRequest = mod.request;
+  const rawGet = mod.get;
+  const origRequest = rawRequest.bind(mod);
 
   const tracedRequest = function (...args: any[]): http.ClientRequest {
-    if (isShedding()) return origRequest(...(args as [any]));
+    if (!active || isShedding()) return origRequest(...(args as [any]));
     const agent = agentRef;
 
     let spanId = 0n;
@@ -118,23 +127,29 @@ function wrapModule(mod: { request: any; get: any }): void {
     return req;
   };
 
-  (mod as any).request = tracedRequest;
-  (mod as any).get = function (...args: any[]): http.ClientRequest {
+  const tracedGet = function (...args: any[]): http.ClientRequest {
     const req = tracedRequest(...args);
     req.end();
     return req;
   };
+  (mod as any).request = tracedRequest;
+  (mod as any).get = tracedGet;
+  liveWraps.set(key, () => {
+    let clear = true;
+    if (mod.request === tracedRequest) mod.request = rawRequest;
+    else clear = false; // foreign wrapper on top — ours must stay beneath it
+    if (mod.get === tracedGet) mod.get = rawGet;
+    else clear = false;
+    return clear;
+  });
 }
 
 function wrapFetch(): void {
   const origFetch = globalThis.fetch;
   if (typeof origFetch !== 'function') return;
 
-  globalThis.fetch = async function flightboxFetch(
-    input: any,
-    init?: any
-  ): Promise<Response> {
-    if (isShedding()) return origFetch(input, init);
+  const wrapper = async function flightboxFetch(input: any, init?: any): Promise<Response> {
+    if (!active || isShedding()) return origFetch(input, init);
     const agent = agentRef;
 
     let spanId = 0n;
@@ -193,26 +208,53 @@ function wrapFetch(): void {
       throw err;
     }
   };
+
+  globalThis.fetch = wrapper as typeof fetch;
+  liveWraps.set('fetch', () => {
+    if (globalThis.fetch === wrapper) {
+      globalThis.fetch = origFetch;
+      return true;
+    }
+    return false; // foreign wrapper on top — ours must stay beneath it
+  });
 }
 
 export function instrumentHttpClient(agent: AgentApi): void {
   agentRef = agent;
-  if (patched) return;
-  patched = true;
+  active = true;
   // Each target independently try/caught: one failing must not skip the rest.
-  try {
-    wrapModule(nodeRequire('node:http'));
-  } catch {
-    /* degrade: http.request unrecorded */
+  // A target with a surviving wrapper (restart after stop) is just reactivated.
+  if (!liveWraps.has('http')) {
+    try {
+      wrapModule('http', nodeRequire('node:http'));
+    } catch {
+      /* degrade: http.request unrecorded */
+    }
   }
-  try {
-    wrapModule(nodeRequire('node:https'));
-  } catch {
-    /* degrade: https.request unrecorded */
+  if (!liveWraps.has('https')) {
+    try {
+      wrapModule('https', nodeRequire('node:https'));
+    } catch {
+      /* degrade: https.request unrecorded */
+    }
   }
-  try {
-    wrapFetch();
-  } catch {
-    /* degrade: fetch unrecorded */
+  if (!liveWraps.has('fetch')) {
+    try {
+      wrapFetch();
+    } catch {
+      /* degrade: fetch unrecorded */
+    }
+  }
+}
+
+/**
+ * Reverses instrumentHttpClient. A slot that other tooling wrapped after us
+ * keeps its chain (removing it would strip their patch too); our buried
+ * wrapper passes through until the next start().
+ */
+export function restoreHttpClient(): void {
+  active = false;
+  for (const [key, undo] of liveWraps) {
+    if (undo()) liveWraps.delete(key);
   }
 }

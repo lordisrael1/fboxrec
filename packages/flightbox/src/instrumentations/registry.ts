@@ -1,8 +1,8 @@
 import type { AgentApi } from '../agent';
-import { instrumentHttpServer } from './http-server';
-import { instrumentHttpClient } from './http-client';
-import { instrumentPg } from './pg';
-import { instrumentConsole } from './console';
+import { instrumentHttpServer, restoreHttpServer } from './http-server';
+import { instrumentHttpClient, restoreHttpClient } from './http-client';
+import { instrumentPg, restorePg } from './pg';
+import { instrumentConsole, restoreConsole } from './console';
 
 /**
  * Applies every instrumentation, each individually try/caught — a failed
@@ -26,6 +26,29 @@ export function applyInstrumentations(agent: AgentApi): void {
       }
     } catch (err) {
       agent.config.log(`instrumentation ${name} failed to apply: ${(err as Error).message}`);
+    }
+  }
+}
+
+const RESTORATIONS: ReadonlyArray<readonly [string, () => void]> = [
+  ['http-server', restoreHttpServer],
+  ['http-client', restoreHttpClient],
+  ['pg', restorePg],
+  ['console', restoreConsole]
+];
+
+/**
+ * Reverses applyInstrumentations. Each restore unwraps its target only if
+ * our wrapper is still on top; a target that other tooling wrapped after us
+ * keeps its chain, and our buried wrapper degrades to a pass-through until
+ * the next start().
+ */
+export function removeInstrumentations(log: (msg: string) => void): void {
+  for (const [name, restore] of RESTORATIONS) {
+    try {
+      restore();
+    } catch (err) {
+      log(`instrumentation ${name} failed to restore: ${(err as Error).message}`);
     }
   }
 }

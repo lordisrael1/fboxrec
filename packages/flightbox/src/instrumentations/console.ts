@@ -17,26 +17,50 @@ const LEVELS = ['log', 'info', 'warn', 'error', 'debug'] as const;
  * console.log(hugeObject) must not pay full serialization on the hot path. */
 const FORMAT_OPTS = { depth: 2, maxArrayLength: 20, maxStringLength: LIMITS.log } as const;
 
-let patched = false;
+type Level = (typeof LEVELS)[number];
+type ConsoleFn = (...args: unknown[]) => void;
+
 let agentRef: AgentApi;
+/** false after stop(): wrappers still in a chain pass straight through. */
+let active = false;
+/** One entry per level whose chain still contains our wrapper. */
+const patches = new Map<Level, { orig: ConsoleFn; wrapper: ConsoleFn }>();
 
 export function instrumentConsole(agent: AgentApi): void {
   agentRef = agent;
-  if (patched) return;
-  patched = true;
+  active = true;
 
   for (const level of LEVELS) {
-    const orig = console[level].bind(console);
-    console[level] = function flightboxConsole(...args: unknown[]): void {
+    if (patches.has(level)) continue; // wrapper survives from a previous start
+    const orig = console[level] as ConsoleFn;
+    const bound = orig.bind(console);
+    const wrapper = function flightboxConsole(...args: unknown[]): void {
       try {
-        if (!isShedding()) {
+        if (active && !isShedding()) {
           const msg = capScrub(formatWithOptions(FORMAT_OPTS, ...args), LIMITS.log);
           agentRef.recorder.record(EventType.Log, { level, msg });
         }
       } catch {
         // Never break the host's logging.
       }
-      orig(...args);
+      bound(...args);
     };
+    patches.set(level, { orig, wrapper });
+    console[level] = wrapper;
+  }
+}
+
+/**
+ * Reverses instrumentConsole. A level that other tooling wrapped after us
+ * keeps its chain (removing it would strip their patch too); our buried
+ * wrapper passes through until the next start().
+ */
+export function restoreConsole(): void {
+  active = false;
+  for (const [level, p] of patches) {
+    if (console[level] === p.wrapper) {
+      console[level] = p.orig;
+      patches.delete(level);
+    }
   }
 }

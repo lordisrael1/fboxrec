@@ -32,6 +32,10 @@ Everything is correlated by request via AsyncLocalStorage, timestamped with
 the monotonic clock, and held in a fixed 64MB ring (configurable) — the
 recorded window is a consequence of memory and traffic, not a setting.
 
+`flightbox.stop()` disarms recording and restores the patched modules
+(console, http server/client, fetch, pg) to their originals, so tests and
+clean shutdowns leave no trace; `start()` can be called again afterwards.
+
 ## When something breaks
 
 Triggers snapshot the ring into a gzipped `.fbox` incident file:

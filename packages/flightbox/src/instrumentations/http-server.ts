@@ -25,9 +25,13 @@ import { trackRequestStart, trackRequestEnd, maybeFireSlow } from '../triggers/s
  * back to "orphan" instead of mis-attributing.
  */
 
-let patched = false;
 /** Live agent ref — updated on every start() so restart doesn't strand the patch. */
 let agentRef: AgentApi;
+/** false after stop(): the wrapper (if still installed) passes straight through. */
+let active = false;
+type EmitFn = typeof http.Server.prototype.emit;
+/** Non-null while our wrapper is in the emit chain. */
+let saved: { orig: EmitFn; wrapper: EmitFn } | null = null;
 
 /** Constant-time equality over hashes — token length stays unobservable too. */
 function tokenMatches(supplied: string, expected: string): boolean {
@@ -82,15 +86,15 @@ function handleFlightboxEndpoint(
 
 export function instrumentHttpServer(agent: AgentApi): void {
   agentRef = agent;
-  if (patched) return;
-  patched = true;
+  active = true;
+  if (saved) return; // wrapper already in the chain (restart after stop)
 
   const orig = http.Server.prototype.emit;
 
   const flightboxEmit = function (this: http.Server, event: string | symbol): boolean {
     // eslint-disable-next-line prefer-rest-params
     const args = arguments;
-    if (event !== 'request') {
+    if (!active || event !== 'request') {
       return (orig as Function).apply(this, args) as boolean;
     }
 
@@ -164,5 +168,19 @@ export function instrumentHttpServer(agent: AgentApi): void {
     return requestStorage.run(ctx, () => (orig as Function).apply(this, args) as boolean);
   };
 
-  http.Server.prototype.emit = flightboxEmit as typeof http.Server.prototype.emit;
+  saved = { orig, wrapper: flightboxEmit as EmitFn };
+  http.Server.prototype.emit = saved.wrapper;
+}
+
+/**
+ * Reverses instrumentHttpServer. If other tooling wrapped emit after us we
+ * can't splice ourselves out of the chain — the wrapper stays installed but
+ * passes through until the next start().
+ */
+export function restoreHttpServer(): void {
+  active = false;
+  if (saved && http.Server.prototype.emit === saved.wrapper) {
+    http.Server.prototype.emit = saved.orig;
+    saved = null;
+  }
 }

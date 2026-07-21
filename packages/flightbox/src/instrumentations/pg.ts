@@ -36,21 +36,33 @@ function paramShapes(values: unknown): string[] | undefined {
 }
 
 let agentRef: AgentApi;
+/** false after stop(): wrappers still in a chain pass straight through. */
+let active = false;
+
+interface ProtoPatch {
+  proto: any;
+  orig: any;
+  wrapper: any;
+}
+/** Non-null while our wrapper is in the respective prototype chain. */
+let queryPatch: ProtoPatch | null = null;
+let connectPatch: ProtoPatch | null = null;
 
 export function instrumentPg(agent: AgentApi): boolean {
   agentRef = agent;
   const recorder = {
     record: ((...args) => agentRef.recorder.record(...args)) as AgentApi['recorder']['record']
   };
+  active = true;
   const pg = loadPg();
   if (!pg?.Client?.prototype?.query) return false;
 
-  if (!(pg.Client.prototype.query as any).__flightbox) {
+  if (!queryPatch && !(pg.Client.prototype.query as any).__flightbox) {
     const origQuery = pg.Client.prototype.query;
 
     const wrappedQuery = function (this: unknown, ...args: any[]): unknown {
-      // ADR 012: shed path — run the query untouched.
-      if (isShedding()) return origQuery.apply(this, args);
+      // ADR 012: shed path — run the query untouched. Same when stopped.
+      if (!active || isShedding()) return origQuery.apply(this, args);
       let spanId = 0n;
       let requestId = 0n;
       let tStart = 0n;
@@ -143,16 +155,17 @@ export function instrumentPg(agent: AgentApi): boolean {
     };
 
     (wrappedQuery as any).__flightbox = true;
+    queryPatch = { proto: pg.Client.prototype, orig: origQuery, wrapper: wrappedQuery };
     pg.Client.prototype.query = wrappedQuery;
   }
 
   const Pool = pg.Pool;
-  if (Pool?.prototype?.connect && !(Pool.prototype.connect as any).__flightbox) {
+  if (Pool?.prototype?.connect && !connectPatch && !(Pool.prototype.connect as any).__flightbox) {
     const origConnect = Pool.prototype.connect;
 
     const wrappedConnect = function (this: unknown, cb?: unknown): unknown {
-      // ADR 012: shed path — acquire untouched.
-      if (isShedding()) return origConnect.call(this, cb);
+      // ADR 012: shed path — acquire untouched. Same when stopped.
+      if (!active || isShedding()) return origConnect.call(this, cb);
       const tStart = nowMono();
       const requestId = currentRequestId();
       const record = (): void => {
@@ -183,8 +196,26 @@ export function instrumentPg(agent: AgentApi): boolean {
     };
 
     (wrappedConnect as any).__flightbox = true;
+    connectPatch = { proto: Pool.prototype, orig: origConnect, wrapper: wrappedConnect };
     Pool.prototype.connect = wrappedConnect;
   }
 
   return true;
+}
+
+/**
+ * Reverses instrumentPg. A prototype slot that other tooling wrapped after
+ * us keeps its chain (removing it would strip their patch too); our buried
+ * wrapper passes through until the next start().
+ */
+export function restorePg(): void {
+  active = false;
+  if (queryPatch && queryPatch.proto.query === queryPatch.wrapper) {
+    queryPatch.proto.query = queryPatch.orig;
+    queryPatch = null;
+  }
+  if (connectPatch && connectPatch.proto.connect === connectPatch.wrapper) {
+    connectPatch.proto.connect = connectPatch.orig;
+    connectPatch = null;
+  }
 }

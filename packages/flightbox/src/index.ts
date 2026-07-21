@@ -19,7 +19,7 @@ import { TriggerEngine, type TriggerFireInfo } from './triggers/engine';
 import { createManualTrigger } from './triggers/manual';
 import { installCrashTriggers } from './triggers/uncaught';
 import { startWatchdog } from './triggers/slow-request';
-import { applyInstrumentations } from './instrumentations/registry';
+import { applyInstrumentations, removeInstrumentations } from './instrumentations/registry';
 import { startVitals } from './instrumentations/vitals';
 
 export type { UserConfig, FlightboxConfig, SinkConfig } from './config';
@@ -301,7 +301,13 @@ export function addEvent(name: string, data: Record<string, unknown> = {}): void
   });
 }
 
-/** Disarms recording, stops samplers and watchdogs. Module patches remain but degrade to no-ops. */
+/**
+ * Disarms recording: stops samplers/watchdogs/timers, removes the process
+ * listeners, and restores the module patches (console, http server/client,
+ * fetch, pg). A patch that other tooling wrapped after start() can't be
+ * spliced out safely; it stays in place but passes straight through.
+ * start() may be called again afterwards.
+ */
 export function stop(): void {
   if (instance) {
     instance.recorder.armed = false;
@@ -312,6 +318,7 @@ export function stop(): void {
         /* best-effort */
       }
     }
+    removeInstrumentations(instance.config.log);
     instance.panicWriter.disarm();
     setShedding(false);
     instance = null;
